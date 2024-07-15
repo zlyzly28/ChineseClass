@@ -6,7 +6,8 @@ import pickle as pkl
 from tqdm import tqdm
 import time
 from datetime import timedelta
-
+import torch
+import torch.nn.functional as F
 
 MAX_VOCAB_SIZE = 10000  # 词表长度限制
 UNK, PAD = '<UNK>', '<PAD>'  # 未知字，padding符号
@@ -27,6 +28,105 @@ def build_vocab(file_path, tokenizer, max_size, min_freq):
         vocab_dic.update({UNK: len(vocab_dic), PAD: len(vocab_dic) + 1})
     return vocab_dic
 
+def build_dataset2(config, ues_word):
+    if ues_word:
+        tokenizer = lambda x: x.split(' ')  # 以空格隔开，word-level
+    else:
+        tokenizer = lambda x: [y for y in x]  # char-level
+    if os.path.exists(config.vocab_path):
+        vocab = pkl.load(open(config.vocab_path, 'rb'))
+    else:
+        vocab = build_vocab(config.train_path, tokenizer=tokenizer, max_size=MAX_VOCAB_SIZE, min_freq=1)
+        pkl.dump(vocab, open(config.vocab_path, 'wb'))
+    print(f"Vocab size: {len(vocab)}")
+
+    def load_dataset(path, pad_size=64):
+        contents = []
+        with open(path, 'r', encoding='UTF-8') as f:
+            for line in tqdm(f):
+                lin = line.strip()
+                if not lin:
+                    continue
+                tmp_data = lin.split('\t')
+                content = tmp_data[0]
+
+                zhuti_label = [config.class_list.index(t.split('#')[0]) for t in tmp_data[1:]]
+
+                cal_qinggan = sum([int(t.split('#')[1]) for t in tmp_data[1:]])
+                qinggan_label = 1
+                if cal_qinggan > 0:
+                    qinggan_label = 2
+                elif cal_qinggan < 0:
+                    qinggan_label = 0
+
+                words_line = []
+                token = tokenizer(content)
+                seq_len = len(token)
+                if pad_size:
+                    if len(token) < pad_size:
+                        token.extend([PAD] * (pad_size - len(token)))
+                    else:
+                        token = token[:pad_size]
+                        seq_len = pad_size
+                # word to id
+                for word in token:
+                    words_line.append(vocab.get(word, vocab.get(UNK)))
+                contents.append((words_line, zhuti_label, int(qinggan_label), seq_len))
+        return contents  # [(([...], [...], 0), 0), ([...], 1), ...]
+    train = load_dataset(config.train_path, config.pad_size)
+    test = load_dataset(config.test_path, config.pad_size)
+    return vocab, train, test
+
+class DatasetIterater2(object):
+    def __init__(self, batches, batch_size, device):
+        self.batch_size = batch_size
+        self.batches = batches
+        self.n_batches = len(batches) // batch_size
+        self.residue = False  # 记录batch数量是否为整数
+        if len(batches) % self.n_batches != 0:
+            self.residue = True
+        self.index = 0
+        self.device = device
+
+    def _to_tensor(self, datas):
+        x = torch.LongTensor([_[0] for _ in datas]).to(self.device)
+        qinggan_y = torch.LongTensor([_[-2] for _ in datas]).to(self.device)
+        zhuti_tmp = [_[-3] for _ in datas]
+        # print(zhuti_tmp)
+        zhuti_y = torch.stack([torch.sum(F.one_hot(torch.tensor(tmp), 10), axis=0) for tmp in zhuti_tmp])
+        # pad前的长度(超过pad_size的设为pad_size)
+        seq_len = torch.LongTensor([_[-1] for _ in datas]).to(self.device)
+        return (x, seq_len), qinggan_y, zhuti_y
+
+    def __next__(self):
+        if self.residue and self.index == self.n_batches:
+            batches = self.batches[self.index * self.batch_size: len(self.batches)]
+            self.index += 1
+            batches = self._to_tensor(batches)
+            return batches
+
+        elif self.index >= self.n_batches:
+            self.index = 0
+            raise StopIteration
+        else:
+            batches = self.batches[self.index * self.batch_size: (self.index + 1) * self.batch_size]
+            self.index += 1
+            batches = self._to_tensor(batches)
+            return batches
+
+    def __iter__(self):
+        return self
+
+    def __len__(self):
+        if self.residue:
+            return self.n_batches + 1
+        else:
+            return self.n_batches
+
+
+def build_iterator2(dataset, config):
+    iter = DatasetIterater2(dataset, config.batch_size, config.device)
+    return iter
 
 def build_dataset(config, ues_word):
     if ues_word:
