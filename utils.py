@@ -28,6 +28,8 @@ def build_vocab(file_path, tokenizer, max_size, min_freq):
         vocab_dic.update({UNK: len(vocab_dic), PAD: len(vocab_dic) + 1})
     return vocab_dic
 
+class_list = ['价格', '配置', '操控', '舒适性', '油耗', '动力', '内饰', '安全性', '空间', '外观']
+
 def build_dataset2(config, ues_word):
     if ues_word:
         tokenizer = lambda x: x.split(' ')  # 以空格隔开，word-level
@@ -50,7 +52,7 @@ def build_dataset2(config, ues_word):
                 tmp_data = lin.split('\t')
                 content = tmp_data[0]
 
-                zhuti_label = [config.class_list.index(t.split('#')[0]) for t in tmp_data[1:]]
+                zhuti_label = [class_list.index(t.split('#')[0]) for t in tmp_data[1:]]
 
                 cal_qinggan = sum([int(t.split('#')[1]) for t in tmp_data[1:]])
                 qinggan_label = 1
