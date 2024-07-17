@@ -281,12 +281,12 @@ def train_zhuti(config, model, train_iter, dev_iter):
             loss = loss_fn(outputs, zhuti_label)
             loss.backward()
             optimizer.step()
-            if total_batch % 1 == 0:
+            if total_batch % 10 == 0:
                 # 每多少轮输出在训练集和验证集上的效果
-                predic = (torch.sigmoid(outputs) > alpha).float()
+                predic = (torch.sigmoid(outputs) > alpha).float().cpu()
                 # true = qinggan_label.data.cpu()
                 # predic = torch.max(outputs.data, 1)[1].cpu()
-                             
+                zhuti_label = zhuti_label.float().cpu()
                 train_acc = metrics.accuracy_score(predic.view(-1), zhuti_label.view(-1))
                 train_precision = metrics.precision_score(predic.view(-1), zhuti_label.view(-1), average='macro', zero_division=0)
                 train_recall = metrics.recall_score(predic.view(-1), zhuti_label.view(-1), average='macro', zero_division=0)

@@ -95,7 +95,7 @@ class DatasetIterater2(object):
         qinggan_y = torch.LongTensor([_[-2] for _ in datas]).to(self.device)
         zhuti_tmp = [_[-3] for _ in datas]
         # print(zhuti_tmp)
-        zhuti_y = torch.stack([torch.sum(F.one_hot(torch.tensor(tmp), 10), axis=0) for tmp in zhuti_tmp])
+        zhuti_y = torch.stack([torch.sum(F.one_hot(torch.tensor(tmp), 10), axis=0) for tmp in zhuti_tmp]).to(self.device)
         # pad前的长度(超过pad_size的设为pad_size)
         seq_len = torch.LongTensor([_[-1] for _ in datas]).to(self.device)
         return (x, seq_len), qinggan_y, zhuti_y
